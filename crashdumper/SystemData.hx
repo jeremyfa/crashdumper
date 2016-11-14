@@ -8,9 +8,9 @@ package crashdumper;
 
 /**
  * A simple data structure that records data about the user's system.
- * 
+ *
  * usage: var s = new SystemData();
- * 
+ *
  * @author larsiusprime
  */
 class SystemData
@@ -23,36 +23,46 @@ class SystemData
 	public var cpuName:String;			//the name of your cpu, -- "Intel(R) Core(TM)2 Duo CPU     E7400  @ 2.80GHz"
 	public var gpuName:String;			//the name of your gpu, -- "ATI Radeon HD 4800 Series"
 	public var gpuDriverVersion:String;	//version number of gpu driver, -- "8.970.100.1100"
-	
+
 	#if flash
 	public var playerVersion:String;	//version number of the flash player, ie "WIN 12,0,0,77"
 	public var playerType:String;
 	#end
-	
-	public function new() 
+
+	public function new()
 	{
+		totalMemory = 0;
+		gpuName = "unknown";
+		gpuDriverVersion = "unknown";
+
 		#if windows
 			os = "windows";
+			osName = "Windows";
 		#elseif mac
 			os = "mac";
+			osName = "MacOS";
 		#elseif linux
 			os = "linux";
+			osName = "Linux";
 		#elseif android
 			os = "android";
+			osName = "Android";
 		#elseif ios
 			os = "ios";
+			osName = "iOS";
 		#elseif flash
 			osName = flash.system.Capabilities.os + " (flash)";
 			playerType = flash.system.Capabilities.playerType;
-			playerVersion = flash.system.Capabilities.version; 
+			playerVersion = flash.system.Capabilities.version;
 			cpuName = flash.system.Capabilities.cpuArchitecture;
 			totalMemory = 0;
 			gpuName = "unknown";
 			gpuDriverVersion = "unknown";
 		#end
-		
-		
-		
+
+		if (osRaw == null) osRaw = os;
+		osVersion = "unknown";
+
 		try {
 			#if windows
 				runProcess("crashdumper/os.bat", [], processOS);
@@ -65,7 +75,7 @@ class SystemData
 				runProcess("chmod", [ "a+x","crashdumper/memory.sh"], dummy);
 				runProcess("chmod", [ "a+x","crashdumper/cpu.sh"], dummy);
 				runProcess("chmod", [ "a+x","crashdumper/gpu.sh"], dummy);
-				
+
 				runProcess("crashdumper/os.sh", [], processOS);
 				runProcess("crashdumper/memory.sh", [], processMemory);
 				runProcess("crashdumper/cpu.sh", [], processCPU);
@@ -76,7 +86,7 @@ class SystemData
 				runProcess("chmod", [ "a+x","crashdumper/memory.sh"], dummy);
 				runProcess("chmod", [ "a+x","crashdumper/cpu.sh"], dummy);
 				runProcess("chmod", [ "a+x","crashdumper/gpu.sh"], dummy);
-				
+
 				runProcess("crashdumper/os.sh", [], processOS);
 				runProcess("crashdumper/memory.sh", [], processMemory);
 				runProcess("crashdumper/cpu.sh", [], processCPU);
@@ -88,43 +98,43 @@ class SystemData
 			trace("error creating SystemData : " + msg);
 		}
 	}
-	
+
 	private function dummy(line:String):Void
 	{
 	// this is because runprocess() must accept function
 	}
-	
+
 	public function summary():String
 	{
 		#if flash
-		return "SystemData" + endl() + 
-		"{" + endl() + 
-		"   OS: " + osName + endl() + 
-		"FLASH: " + playerType + " v. " + playerVersion + endl() + 
+		return "SystemData" + endl() +
+		"{" + endl() +
+		"   OS: " + osName + endl() +
+		"FLASH: " + playerType + " v. " + playerVersion + endl() +
 		"  CPU: " + cpuName + endl() +
 		"}";
 		#else
-		
-		return "SystemData" + endl() + 
-		"{" + endl() + 
-		"  OS : " + osName + endl() + 
+
+		return "SystemData" + endl() +
+		"{" + endl() +
+		"  OS : " + osName + endl() +
 		"  RAM: " + totalMemory + " KB (" + toGBStr(totalMemory) + " GB)" + endl() +
 		"  CPU: " + cpuName + endl() +
 		"  GPU: " + gpuName + ", driver v. " + gpuDriverVersion + endl() +
 		"}";
 		#end
 	}
-	
+
 	public function toString():String
 	{
-		return "SystemData" + "\n"+ 
-		"{" + endl() + 
-		"  os: " + os + "\n" + 
+		return "SystemData" + "\n"+
+		"{" + endl() +
+		"  os: " + os + "\n" +
 		"  osRaw: " + osRaw + "\n" +
-		"  osName: " + osName + "\n" + 
-		"  osVersion: " + osVersion + "\n" + 
+		"  osName: " + osName + "\n" +
+		"  osVersion: " + osVersion + "\n" +
 		#if flash
-		"  playerType: " + playerType + "\n" + 
+		"  playerType: " + playerType + "\n" +
 		"  playerVersion: " + playerVersion + "\n" +
 		#end
 		"  totalMemory: " + toGBStr(totalMemory) + "\n" +
@@ -133,24 +143,24 @@ class SystemData
 		"  gpuDriverVersion: " + gpuDriverVersion + "\n" +
 		"}";
 	}
-	
+
 	private function toMB(kilobytes:Int):Float
 	{
 		return kilobytes / (1024);
 	}
-	
+
 	private function toGB(kilobytes:Int):Float
 	{
 		return kilobytes / (1024 * 1024);
 	}
-	
+
 	private function toGBStr(kilobytes:Int):String
 	{
 		var gb:Float = toGB(kilobytes);
 		gb = Math.round(gb * 100) / 100;
 		return Std.string(gb);
 	}
-	
+
 	private function runProcess(commandStr:String, commandArgs:Array<String>, processFunc:String->Void):Void
 	{
 		#if sys
@@ -172,7 +182,7 @@ class SystemData
 			}
 		#end
 	}
-	
+
 	private function isOneOfThese(char:String,arr:Array<String>):Bool
 	{
 		for (str in arr) {
@@ -182,8 +192,8 @@ class SystemData
 		}
 		return false;
 	}
-	
-	private function processOS(line:String):Void 
+
+	private function processOS(line:String):Void
 	{
 		if (line == null)
 		{
@@ -192,12 +202,12 @@ class SystemData
 		#if windows
 			//ver returns something like this: "Microsoft Windows [Version 6.1.7601]", localized
 			//we wanna strip away everything but the number
-			
+
 			line = stripEndLines(line);
 			osRaw = line;
 			line = line.toLowerCase();
 			line = stripWhiteSpace(line);
-			
+
 			//chomp away everything before the "[" and after the "]"
 			if (line.indexOf("[") != -1)
 			{
@@ -213,18 +223,18 @@ class SystemData
 					line = line.substr(0, line.length - 1);
 				}
 			}
-			
+
 			//now we have something like this: "[versionX.Y.Z]"
 			//where X.Y.Z are numbers and "version" is locale-specific
-			
+
 			//strip the "[]" chars
 			line = stripWord(line, "[");
 			line = stripWord(line, "]");
-			
+
 			var numAndDot:Array<String> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "."];
-			
+
 			//strip away all non-number and non-dot characters
-			
+
 			if (line.length > 0 && !isOneOfThese(line.charAt(0), numAndDot))
 			{
 				while (line.length > 0 && !isOneOfThese(line.charAt(0), numAndDot))
@@ -232,16 +242,16 @@ class SystemData
 					line = line.substr(1, line.length - 1);
 				}
 			}
-			
+
 			//now we have a string we can safely compare against known values
 			osVersion = line;
-			
+
 			//check for windows 10
-			if (osVersion.substr(0, 2) == "10") 
+			if (osVersion.substr(0, 2) == "10")
 			{
 				osName = checkWindows10Version(osVersion);
-			} 
-			else 
+			}
+			else
 			{
 				switch(line)
 				{
@@ -274,24 +284,24 @@ class SystemData
 			osName = line;
 		#end
 	}
-	
+
 	private function checkWindows10Version(line:String):String
 	{
 		//the specific windows 10 version is determined by the last number in the string
 		var versionNumber:Int = Std.parseInt(line.substr(line.lastIndexOf(".") + 1));
-		
+
 		//all versions under 10240 are preview releases
 		if (versionNumber < 10240)
 		{
 			return "Windows 10 (Pre-release)";
 		}
 		//10240 is the original release version
-		else if (versionNumber == 10240) 
+		else if (versionNumber == 10240)
 		{
 			return "Windows 10 (TH1)";
 		}
 		//versions up until 10586 are part of the second wave of updates
-		else if (versionNumber > 10240 && versionNumber <= 10586) 
+		else if (versionNumber > 10240 && versionNumber <= 10586)
 		{
 			return "Windows 10 (TH2)";
 		}
@@ -300,7 +310,7 @@ class SystemData
 			return "Windows 10 (Unknown Specific Version)";
 		}
 	}
-	
+
 	private function processMemory(line:String):Void
 	{
 		#if windows
@@ -316,7 +326,7 @@ class SystemData
 			totalMemory = Std.parseInt(line) * 1024 * 1024;
 		#end
 	}
-	
+
 	private function processCPU(line:String):Void
 	{
 		#if windows
@@ -335,7 +345,7 @@ class SystemData
 			cpuName = stripEndLines(line);
 		#end
 	}
-	
+
 	private function processGPU(line:String):Void
 	{
 		#if windows
@@ -365,7 +375,7 @@ class SystemData
 			gpuDriverVersion = "unknown";
 		#end
 	}
-	
+
 	public static function endl():String
 	{
 		#if windows
@@ -373,7 +383,7 @@ class SystemData
 		#end
 		return "\n";
 	}
-	
+
 	public static function slash():String
 	{
 		#if windows
@@ -381,7 +391,7 @@ class SystemData
 		#end
 		return "/";
 	}
-	
+
 	public static function replaceWord(line:String, word:String, replace:String):String
 	{
 		if (word == replace)
@@ -394,7 +404,7 @@ class SystemData
 		}
 		return line;
 	}
-	
+
 	public static function stripWord(line:String, word:String):String
 	{
 		while (line.indexOf(word) != -1)
@@ -403,14 +413,14 @@ class SystemData
 		}
 		return line;
 	}
-	
+
 	public static function stripEndLines(str:String):String
 	{
 		str = stripWord(str, "\n");
 		str = stripWord(str, "\r");
 		return str;
 	}
-	
+
 	public static function stripWhiteSpace(str:String):String
 	{
 		str = stripWord(str, " ");
