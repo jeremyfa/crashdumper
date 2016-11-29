@@ -29,22 +29,22 @@ import haxe.Http;
  * optional: set one or both of these in your project.xml:
  *   <haxedef name="HXCPP_STACK_LINE" />  <!--if you want line numbers-->
  *   <haxedef name="HXCPP_STACK_TRACE"/>  <!--if you want stack traces-->
- * 
+ *
  * usage 1: var c = new CrashDumper("unique_str_id",true);
  * -->on crash: dumps a report & closes the app.
- * 
+ *
  * usage 2: var c = new CrashDumper("unique_str_id",false,myCrashMethod);
  * -->on crash: dumps a report & calls myCrashMethod
- * 
+ *
  * All you need to do is instantiate it, preferably at the beginning of your app, and you only need one.
- *  
+ *
  * NOTE: crashdumper automatically sets these (required) haxedefs via it's include.xml:
  *   <haxedef name="safeMode"/>
  *   <haxedef name="HXCPP_CHECK_POINTER"/>
- * 
- * "safeMode" causes UncaughtErrorEvents to properly fire even in release mode, and 
+ *
+ * "safeMode" causes UncaughtErrorEvents to properly fire even in release mode, and
  *  CHECK_POINTER forces null pointer crashes to fire errors in release mode.
- * 
+ *
  * @author larsiusprime
  */
 class CrashDumper
@@ -52,20 +52,21 @@ class CrashDumper
 	public var closeOnCrash:Bool;
 	public var postCrashMethod:CrashDumper->Void;
 	public var customDataMethod:CrashDumper->Void;
-	
+
 	public var session:SessionData;
 	public var system:SystemData;
-	
+
 	public var path(default, set):String;
 	public var url(default, set):String;
-	
+
 	public static var endl:String = "\n";
 	public static var sl:String = "/";
-	
-	
+
+	public static var externalHandleCrash:String->Void = null;
+
 	public var pathLogErrors(default, null):String;
 	public var uniqueErrorLogPath(default, null):String;
-	
+
 	/**
 	 * Creates a new CrashDumper that will listen for uncaught error events and properly handle the crash
 	 * @param	sessionId			a unique string identifier for this session
@@ -76,31 +77,31 @@ class CrashDumper
 	 * @param	postCrashMethod_	method to call AFTER a crash dump is created if closeOnCrash is false
 	 * @param	stage_				(flash target only) the root Stage object
 	 */
-	
-	public function new(sessionId_:String, ?path_:String, ?url_:String="http://localhost:8080/result", closeOnCrash_:Bool = true, ?customDataMethod_:CrashDumper->Void, ?postCrashMethod_:CrashDumper->Void, ?stage_:Dynamic) 
+
+	public function new(sessionId_:String, ?path_:String, ?url_:String="http://localhost:8080/result", closeOnCrash_:Bool = true, ?customDataMethod_:CrashDumper->Void, ?postCrashMethod_:CrashDumper->Void, ?stage_:Dynamic)
 	{
 		hook = Util.platform();
-		
+
 		closeOnCrash = closeOnCrash_;
 		postCrashMethod = postCrashMethod_;
 		customDataMethod = customDataMethod_;
-		
+
 		path = path_;
-		
+
 		var data = { fileName:hook.fileName, packageName:hook.packageName, version:hook.version };
 		#if flash
 			data.fileName = stage_.loaderInfo.url;
 		#end
-		
+
 		session = new SessionData(sessionId_, data);
-		
+
 		system = new SystemData();
-		
+
 		endl = SystemData.endl();
 		sl = SystemData.slash();
-		
+
 		hook.setErrorEvent(onErrorEvent);
-		
+
 		#if cpp
 			#if !HXCPP_STACK_LINE
 				SHOW_LINES = false;
@@ -110,23 +111,23 @@ class CrashDumper
 			#end
 			untyped __global__.__hxcpp_set_critical_error_handler(onCriticalErrorEvent);
 		#end
-		
+
 		//set url to "http://localhost:8080/result" for local connections
 		url = url_;
 	}
-	
+
 	/**********PRIVATE************/
-	
+
 	private var hook:IHookPlatform;
-	
+
 	private var theError:Dynamic;
 	private var SHOW_LINES:Bool = true;
 	private var SHOW_STACK:Bool = true;
-	
+
 	private var CACHED_STACK_TRACE:String = "";
-	
+
 	private static var request:haxe.Http;
-	
+
 	private static function onData(msg:String)
 	{
 		trace("onData(" + msg + ")");
@@ -143,8 +144,8 @@ class CrashDumper
 	{
 		trace("onStatus(" + val + ")");
 		// trigger when HTTP return status (200,501,403,etc)
-	}	
-	
+	}
+
 	public function set_url(str:String):String
 	{
 		url = str;
@@ -161,14 +162,14 @@ class CrashDumper
 		}
 		return url;
 	}
-	
+
 	/**
 	 * Set the path to save crashdumper log files to.
 	 * NOTE: on mac/win/linux, this is an absolute path. On mobile, this is ALWAYS prepended by the applicationStorageDirectory.
 	 * @param	str
 	 * @return
 	 */
-	
+
 	public function set_path(str:String):String
 	{
 		str = hook.getFolderPath(str);
@@ -177,20 +178,20 @@ class CrashDumper
 	}
 
 	/***THE BIG ERROR FUNCTION***/
-	
+
 	private function onCriticalErrorEvent(message:String):Void {throw message;}
 	private function onErrorEvent(e:Dynamic):Void
 	{
 		CACHED_STACK_TRACE = getStackTrace();
-		
+
 		#if !flash
 			doErrorStuff(e);		//easy to separately override
 		#else
 			doErrorStuffByHTTP(e);	//minimal flash error report
 		#end
-		
+
 		e.__isCancelled = true;		//cancel the event. We control exiting from here on out.
-		
+
 		if (closeOnCrash)
 		{
 			#if sys
@@ -205,36 +206,39 @@ class CrashDumper
 			}
 		}
 	}
-	
-	
+
+
 	private function doErrorStuff(e:Dynamic, writeToFile:Bool = true, sendToServer:Bool = true, traceToLog:Bool = true):Void
 	{
 		theError = e;
-		
+
 		var pathLog:String = "log/";				//  path/to/log/
 		pathLogErrors = pathLog + "errors/";		//  path/to/log/errors/
-		
+
 		//Prepend pathLog with a slash character if the user path does not end with a slash character
 		if (path.length >= 0 && path.charAt(path.length - 1) != "/" && path.charAt(path.length - 1) != "\\")
 		{
 			pathLog = Util.slash() + pathLog;
 		}
-		
+
 		var errorMessage:String = errorMessageStr();
-		
+
 		if (customDataMethod != null)
 		{
 			customDataMethod(this);			//allow the user to add custom data to the CrashDumper before it outputs
 		}
-		
+
 		var logdir:String = session.id + "_CRASH/"; //directory name for this crash
-		
-		if (traceToLog)
+
+		if (externalHandleCrash != null) {
+			externalHandleCrash("CRASH session.id = " + session.id + "\nMESSAGE = " + errorMessage);
+		}
+		else if (traceToLog)
 		{
 			trace("CRASH session.id = " + session.id);
 			trace("MESSAGE = " + errorMessage);
 		}
-		
+
 		#if sys
 			if (writeToFile)
 			{
@@ -246,7 +250,7 @@ class CrashDumper
 				{
 					FileSystem.createDirectory(path + pathLogErrors);
 				}
-				
+
 				var counter:Int = 0;
 				var failsafe:Int = 999;
 				while (FileSystem.exists(Util.pathFix(path + pathLogErrors + logdir)) && failsafe > 0)
@@ -256,9 +260,9 @@ class CrashDumper
 					counter++;
 					failsafe--;
 				}
-				
+
 				FileSystem.createDirectory(path + pathLogErrors + logdir);
-				
+
 				if (FileSystem.exists(Util.pathFix(path + pathLogErrors + logdir)))
 				{
 					uniqueErrorLogPath = path + pathLogErrors + logdir;
@@ -266,9 +270,9 @@ class CrashDumper
 					var f:FileOutput = File.write(path + pathLogErrors + logdir + "_error.txt");
 					f.writeString(errorMessage);
 					f.close();
-					
+
 					var sanityCheck:String = File.getContent(path + pathLogErrors + logdir + "_error.txt");
-					
+
 					//write out all our associated game session files
 					for (filename in session.files.keys())
 					{
@@ -281,17 +285,17 @@ class CrashDumper
 				}
 			}
 		#end
-		
+
 		if (sendToServer)
 		{
 			var entries:List<Entry> = new List();
-			
+
 			var entry = strToZipEntry(errorMessage, "_error");
 			if (entry != null)
 			{
-				entries.add(entry);	
+				entries.add(entry);
 			}
-			
+
 			for (filename in session.files.keys())
 			{
 				var filecontent:String = session.files.get(filename);
@@ -304,30 +308,30 @@ class CrashDumper
 					}
 				}
 			}
-			
+
 			var bytesOutput = new BytesOutput();
 			var writer = new Writer(bytesOutput);
 			writer.write(entries);
 			var zipfileBytes:Bytes = bytesOutput.getBytes();
-			
+
 			Util.sendReport(request, zipfileBytes);
 		}
 	}
-	
+
 	private function doErrorStuffByHTTP(e:Dynamic):Void
-	{	
+	{
 		theError = e;
 		var errorMessage:String = errorMessageStr();
 		request.setParameter("result",errorMessage);
 		request.request(true);
 	}
-	
+
 	/**
 	 * Concats 2 strings with an endl between them if str1 != ""
 	 * @param	filename
 	 * @param	content
 	 */
-	
+
 	private function endlConcat(str1:String, str2:String):String
 	{
 		if (str1 != "")
@@ -336,15 +340,15 @@ class CrashDumper
 		}
 		return str1 + str2;
 	}
-	
+
 	private function strToZipEntry(str, fileName):Entry
 	{
 		var bytes:Bytes = hook.getZipBytes(str);
 		var entry:Entry = null;
-		
+
 		if (bytes != null)
 		{
-			entry = 
+			entry =
 			{
 				fileName : fileName,
 				fileSize : bytes.length,
@@ -355,17 +359,17 @@ class CrashDumper
 				crc32 : Crc32.make(bytes)
 			}
 		}
-		
+
 		return entry;
 	}
-	
+
 	/*****THESE FUNCTIONS ARE SEPARATED OUT BELOW SO THAT THEY ARE EASY TO OVERRIDE IN SUBCLASSES*****/
-	
+
 	/**
 	 * Returns the error message that will be output
 	 * @return
 	 */
-	
+
 	public function errorMessageStr():String
 	{
 		var str:String = "";
@@ -378,7 +382,7 @@ class CrashDumper
 		#end
 		return str;
 	}
-	
+
 	#if sys
 		private function logFile(filename:String, content:String):Void
 		{
@@ -387,43 +391,43 @@ class CrashDumper
 			f.close();
 		}
 	#end
-	
-	
+
+
 	/**
 	 * Outputs basic information about the user's system
 	 * @return
 	 */
-	
+
 	private function systemStr():String {
 		return system.summary();
 	}
-	
+
 	/**
 	 * Outputs basic information about the app session, including app name, version, session ID, and session start time
 	 * @return
 	 */
-	
+
 	private function sessionStr():String {
-		return "--------------------------------------" + endl + 
-		"filename:\t" + session.fileName + endl + 
+		return "--------------------------------------" + endl +
+		"filename:\t" + session.fileName + endl +
 		#if !flash
-			"package:\t" + session.packageName + endl + 
-			"version:\t" + session.version + endl + 
+			"package:\t" + session.packageName + endl +
+			"version:\t" + session.version + endl +
 		#end
-		"sess. ID:\t" + session.id + endl + 
+		"sess. ID:\t" + session.id + endl +
 		"started:\t" + session.startTime.toString();
 	}
-	
+
 	/**
 	 * Outputs information about the crash itself, including error message, crash time, and stack trace
 	 * @param	errorData	the .error parameter from the object passed in to onErrorEvent
 	 * @return
 	 */
-	
+
 	private function crashStr(errorData:Dynamic):String {
-		var str:String = "--------------------------------------" + endl + 
-		"crashed:\t" + Date.now().toString() + endl + 
-		"duration:\t" + getTimeStr((Date.now().getTime()-session.startTime.getTime())) + endl + 
+		var str:String = "--------------------------------------" + endl +
+		"crashed:\t" + Date.now().toString() + endl +
+		"duration:\t" + getTimeStr((Date.now().getTime()-session.startTime.getTime())) + endl +
 		"error:\t\t" + errorData + endl;
 		if (SHOW_STACK)
 		{
@@ -435,13 +439,13 @@ class CrashDumper
 		}
 		return str;
 	}
-	
+
 	private function getTimeStr(ms:Float):String
 	{
 		var seconds:Int = 0;
 		var minutes:Int = 0;
 		var hours:Int = 0;
-		
+
 		var seconds:Int = Std.int(ms / 1000);
 		if (seconds > 60) {
 			minutes = Std.int(seconds / 60);
@@ -453,7 +457,7 @@ class CrashDumper
 		}
 		return padDigit(hours, 2) + ":" + padDigit(minutes, 2) + ":" + padDigit(seconds, 2);
 	}
-	
+
 	private function padDigit(i:Int, digits:Int):String
 	{
 		var str:String = Std.string(i);
@@ -463,7 +467,7 @@ class CrashDumper
 		}
 		return str;
 	}
-	
+
 	private function getStackTrace():String
 	{
 		var stackTrace:String = "";
@@ -478,9 +482,9 @@ class CrashDumper
 		}
 		return stackTrace;
 	}
-	
-	
-	
+
+
+
 	private function printStackItem(itm:StackItem):String
 	{
 		var str:String = "";
